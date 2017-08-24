@@ -3,9 +3,11 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 using Telegram.Bot;
 using Telegram.Bot.Args;
 using Telegram.Bot.Types;
@@ -43,6 +45,9 @@ namespace ChannelAdminTelegramBot
         private static TelegramBotClient bot;
         private static User botUser;
 
+        private static System.Timers.Timer tabnakFeedTimer;
+        private static string tabnakFeedLastUpdate = "";
+
         private static int updateCounter = 0;
 
         static void Main(string[] args)
@@ -56,7 +61,9 @@ namespace ChannelAdminTelegramBot
             startTelegramBot();
             Console.WriteLine("Purifying data sources...");
             purifyDataSources();
-            
+            Console.WriteLine("Configuring rss feeds watchers...");
+            conigRssFeedsWatchers();
+
             bot.StartReceiving();
 
             Console.WriteLine("Telegram bot started.");
@@ -76,7 +83,7 @@ namespace ChannelAdminTelegramBot
             forbiddenWords = new Dictionary<long, HashSet<string>>();
             replaceableWords = new Dictionary<long, Dictionary<string, string>>();
 
-            foreach (KeyValuePair <long, Tuple<HashSet<string>, Dictionary<string, string>>> pair in dbManager.GetWords(channels))
+            foreach (KeyValuePair<long, Tuple<HashSet<string>, Dictionary<string, string>>> pair in dbManager.GetWords(channels))
             {
                 forbiddenWords.Add(pair.Key, pair.Value.Item1);
                 replaceableWords.Add(pair.Key, pair.Value.Item2);
@@ -154,6 +161,81 @@ namespace ChannelAdminTelegramBot
 
                 Console.WriteLine("Removed Channel : " + channelId);
             }
+        }
+
+        private static void conigRssFeedsWatchers()
+        {
+            if (System.IO.File.Exists(@"TabnakLastUpdate.txt"))
+            {
+                tabnakFeedLastUpdate = System.IO.File.ReadAllText(@"TabnakLastUpdate.txt");
+            }
+
+            tabnakFeedTimer = new System.Timers.Timer(30000);
+            tabnakFeedTimer.AutoReset = true;
+            tabnakFeedTimer.Elapsed += (sender, e) =>
+            {
+                checkRssFeed(@"http://www.varzesh3.com/rss/all");
+            };
+            tabnakFeedTimer.Start();
+
+            checkRssFeed(@"http://www.varzesh3.com/rss/all");
+        }
+
+        private static void checkRssFeed(string url)
+        {
+            WebClient request = new WebClient();
+            request.OpenReadCompleted += (o, e) =>
+            {
+                XDocument xDoc = XDocument.Load(e.Result);
+                IEnumerable<XElement> itemsList = xDoc.Root.Element("channel").Elements("item");
+
+                new Thread(() =>
+                {
+                    List<XElement> neededOnes = new List<XElement>();
+
+
+                    foreach (XElement item in itemsList)
+                    {
+                        Console.WriteLine("pub date : " + item.Element("pubDate").Value);
+
+                        if (item.Element("pubDate").Value == tabnakFeedLastUpdate)
+                        {
+                            break;
+                        }
+
+                        neededOnes.Add(item);
+                    }
+
+                    neededOnes.Reverse();
+
+                    if (itemsList != null && itemsList.Count() > 0)
+                    {
+                        tabnakFeedLastUpdate = itemsList.First().Element("pubDate").Value.ToString();
+                        System.IO.File.WriteAllText(@"TabnakLastUpdate.txt", tabnakFeedLastUpdate);
+                    }
+
+                    foreach (XElement item in neededOnes)
+                    {
+                        string title = item.Element("title").Value.ToString();
+                        string description = "";
+                        if (item.Element("description") != null)
+                        {
+                            description = item.Element("description").Value.ToString();
+                        }
+                        string link = "";
+                        if (item.Element("link") != null)
+                        {
+                            link = item.Element("link").Value.ToString();
+                        }
+
+                        bot.SendTextMessageAsync(channels.Single(), title + Environment.NewLine + description + Environment.NewLine + link);
+
+                        Thread.Sleep(2000);
+                    }
+                }).Start();
+            };
+
+            request.OpenReadAsync(new Uri(url));
         }
 
         static void onUpdate(object sender, UpdateEventArgs uea)
