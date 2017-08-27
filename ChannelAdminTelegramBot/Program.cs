@@ -185,76 +185,98 @@ namespace ChannelAdminTelegramBot
         {
             try
             {
-                Console.WriteLine("hello !");
-
                 WebClient request = new WebClient();
                 request.OpenReadCompleted += (o, e) =>
                 {
-                    /*byte[] buffer = new byte[e.Result.Length];
-                    e.Result.Read(buffer, 0, buffer.Length);
-
-                    System.IO.File.CreateText("test.txt").Write(Encoding.UTF8.GetString(buffer));*/
-
-                    XDocument xDoc = XDocument.Load(e.Result);
-                    IEnumerable<XElement> itemsList = xDoc.Root.Element("channel").Elements("item");
-
-                    new Thread(() =>
+                    try
                     {
-                        List<XElement> neededOnes = new List<XElement>();
+                        XDocument xDoc = XDocument.Load(e.Result);
+                        IEnumerable<XElement> itemsList = xDoc.Root.Element("channel").Elements("item");
 
-                        foreach (XElement item in itemsList)
+                        new Thread(() =>
                         {
-                            
-                            if (item.Element("pubDate").Value == tabnakFeedLastUpdate)
+                            try
                             {
-                                break;
-                            }
+                                List<XElement> neededOnes = new List<XElement>();
 
-                            Console.WriteLine(item.Element("pubDate").Value);
-
-                            neededOnes.Add(item);
-                        }
-
-                        neededOnes.Reverse();
-
-                        if (itemsList != null && itemsList.Count() > 0)
-                        {
-                            tabnakFeedLastUpdate = itemsList.First().Element("pubDate").Value.ToString();
-                            System.IO.File.WriteAllText(@"TabnakLastUpdate.txt", tabnakFeedLastUpdate);
-                        }
-
-                        foreach (XElement item in neededOnes)
-                        {
-                            string title = item.Element("title").Value.ToString();
-                            string description = "";
-                            if (item.Element("description") != null)
-                            {
-                                description = item.Element("description").Value.ToString();
-
-                                if (description.Contains("<p>"))
+                                foreach (XElement item in itemsList)
                                 {
-                                    description = description.Substring(description.IndexOf("<p>") + 3, description.IndexOf("</p>") - description.IndexOf("<p>") - 3);
-                                }
 
-                                if (description.Contains("<a href"))
-                                {
-                                    while (description.Contains("<a href"))
+                                    if (item.Element("pubDate").Value == tabnakFeedLastUpdate)
                                     {
-                                        description = description.Remove(description.IndexOf("<a href"), description.IndexOf("</a>") - description.IndexOf("<a href") + 4);
+                                        break;
                                     }
+
+                                    Console.WriteLine(item.Element("pubDate").Value);
+
+                                    neededOnes.Add(item);
+                                }
+
+                                neededOnes.Reverse();
+
+                                if (itemsList != null && itemsList.Count() > 0)
+                                {
+                                    tabnakFeedLastUpdate = itemsList.First().Element("pubDate").Value.ToString();
+                                    System.IO.File.WriteAllText(@"TabnakLastUpdate.txt", tabnakFeedLastUpdate);
+                                }
+
+                                foreach (XElement item in neededOnes)
+                                {
+                                    string title = item.Element("title").Value.ToString();
+                                    string description = "";
+                                    if (item.Element("description") != null)
+                                    {
+                                        description = item.Element("description").Value.ToString();
+
+                                        if (description.Contains("<p>"))
+                                        {
+                                            description = description.Substring(description.IndexOf("<p>") + 3, description.IndexOf("</p>") - description.IndexOf("<p>") - 3);
+                                        }
+                                        else if (description.Contains("<p "))
+                                        {
+                                            description = description.Substring(description.IndexOf("<p ") + 3, description.IndexOf("</p>") - description.IndexOf("<p>") - 3);
+                                            description = description.Substring(description.IndexOf(">") + 1);
+                                        }
+
+                                        if (description.Contains("<a href"))
+                                        {
+                                            while (description.Contains("<a href"))
+                                            {
+                                                string innerWordRaw = description.Substring(description.IndexOf("<a href"), description.IndexOf("</a>") - description.IndexOf("<a href"));
+                                                string innerWord = innerWordRaw.Substring(innerWordRaw.IndexOf(">"));
+                                                innerWord = innerWord.Length > 0 ? innerWord.Substring(1) : "";
+                                                description = description.Replace(description.Substring(description.IndexOf("<a href"), description.IndexOf("</a>") - description.IndexOf("<a href") + 4), innerWord);
+                                            }
+                                        }
+
+                                        if (description.Contains("<span"))
+                                        {
+                                            while (description.Contains("<span"))
+                                            {
+                                                string innerWordRaw = description.Substring(description.IndexOf("<span"), description.IndexOf("</span>") - description.IndexOf("<span"));
+                                                string innerWord = innerWordRaw.Substring(innerWordRaw.IndexOf(">"));
+                                                innerWord = innerWord.Length > 0 ? innerWord.Substring(1) : "";
+                                                description = description.Replace(description.Substring(description.IndexOf("<span"), description.IndexOf("</span>") - description.IndexOf("<span") + 7), innerWord);
+                                            }
+                                        }
+
+                                        description = WebUtility.HtmlDecode(description);
+                                    }
+                                    string link = "";
+                                    if (item.Element("link") != null)
+                                    {
+                                        link = item.Element("link").Value.ToString();
+                                    }
+
+                                    bot.SendTextMessageAsync(channels.Single(), title + Environment.NewLine + description + Environment.NewLine + link).Wait();
+
+                                    Thread.Sleep(2000);
                                 }
                             }
-                            string link = "";
-                            if (item.Element("link") != null)
-                            {
-                                link = item.Element("link").Value.ToString();
-                            }
-
-                            bot.SendTextMessageAsync(channels.Single(), title + Environment.NewLine + description + Environment.NewLine + link).Wait();
-
-                            Thread.Sleep(2000);
-                        }
-                    }).Start();
+                            catch (Exception ex) { Console.WriteLine(ex.ToString()); }
+                        }).Start();
+                    }
+                    catch (Exception ex) { Console.WriteLine(ex.ToString()); }
                 };
 
                 request.OpenReadAsync(new Uri(url));
