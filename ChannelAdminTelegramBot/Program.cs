@@ -45,8 +45,8 @@ namespace ChannelAdminTelegramBot
         private static TelegramBotClient bot;
         private static User botUser;
 
-        private static System.Timers.Timer tabnakFeedTimer;
-        private static string tabnakFeedLastUpdate = "";
+        private static System.Timers.Timer[] feedTimers;
+        private static string[] lastFeedUpdates;
 
         private static int updateCounter = 0;
 
@@ -165,23 +165,44 @@ namespace ChannelAdminTelegramBot
 
         private static void conigRssFeedsWatchers()
         {
-            if (System.IO.File.Exists(@"TabnakLastUpdate.txt"))
+            if (System.IO.File.Exists(@"LastFeedUpdates.txt"))
             {
-                tabnakFeedLastUpdate = System.IO.File.ReadAllText(@"TabnakLastUpdate.txt");
+                lastFeedUpdates = System.IO.File.ReadAllLines(@"LastFeedUpdates.txt");
             }
 
-            tabnakFeedTimer = new System.Timers.Timer(30000);
-            tabnakFeedTimer.AutoReset = true;
-            tabnakFeedTimer.Elapsed += (sender, e) =>
+            if (lastFeedUpdates == null || lastFeedUpdates.Length < 2)
             {
-                checkRssFeed(@"https://www.zoomit.ir/feed/");
-            };
-            tabnakFeedTimer.Start();
+                lastFeedUpdates = new string[] { "", "" };
+            }
 
-            checkRssFeed(@"https://www.zoomit.ir/feed/");
+            feedTimers = new System.Timers.Timer[2];
+
+            // digiato
+
+            feedTimers[0] = new System.Timers.Timer(30000);
+            feedTimers[0].AutoReset = true;
+            feedTimers[0].Elapsed += (sender, e) =>
+            {
+                checkRssFeed(@"http://feeds.feedburner.com/Digiato?format=xml", 0);
+            };
+            feedTimers[0].Start();
+
+            checkRssFeed(@"http://feeds.feedburner.com/Digiato?format=xml", 0);
+
+            // zoomit
+
+            feedTimers[1] = new System.Timers.Timer(30000);
+            feedTimers[1].AutoReset = true;
+            feedTimers[1].Elapsed += (sender, e) =>
+            {
+                checkRssFeed(@"https://www.zoomit.ir/feed/", 1);
+            };
+            feedTimers[1].Start();
+
+            checkRssFeed(@"https://www.zoomit.ir/feed/", 1);
         }
 
-        private static void checkRssFeed(string url)
+        private static void checkRssFeed(string url, int feedIndex)
         {
             try
             {
@@ -202,7 +223,7 @@ namespace ChannelAdminTelegramBot
                                 foreach (XElement item in itemsList)
                                 {
 
-                                    if (item.Element("pubDate").Value == tabnakFeedLastUpdate)
+                                    if (item.Element("pubDate").Value == lastFeedUpdates[feedIndex])
                                     {
                                         break;
                                     }
@@ -216,59 +237,79 @@ namespace ChannelAdminTelegramBot
 
                                 if (itemsList != null && itemsList.Count() > 0)
                                 {
-                                    tabnakFeedLastUpdate = itemsList.First().Element("pubDate").Value.ToString();
-                                    System.IO.File.WriteAllText(@"TabnakLastUpdate.txt", tabnakFeedLastUpdate);
+                                    lastFeedUpdates[feedIndex] = itemsList.First().Element("pubDate").Value.ToString();
+                                    System.IO.File.WriteAllLines(@"TabnakLastUpdate.txt", lastFeedUpdates);
                                 }
 
                                 foreach (XElement item in neededOnes)
                                 {
-                                    string title = item.Element("title").Value.ToString();
-                                    string description = "";
-                                    if (item.Element("description") != null)
+                                    try
                                     {
-                                        description = item.Element("description").Value.ToString();
+                                        string title = item.Element("title").Value.ToString();
+                                        string description = "";
 
-                                        if (description.Contains("<p>"))
+                                        if (item.Element("description") != null && item.Element("description").Value != null && item.Element("description").Value.Length > 0)
                                         {
-                                            description = description.Substring(description.IndexOf("<p>") + 3, description.IndexOf("</p>") - description.IndexOf("<p>") - 3);
-                                        }
-                                        else if (description.Contains("<p "))
-                                        {
-                                            description = description.Substring(description.IndexOf("<p ") + 3, description.IndexOf("</p>") - description.IndexOf("<p>") - 3);
-                                            description = description.Substring(description.IndexOf(">") + 1);
-                                        }
+                                            description = item.Element("description").Value.ToString();
 
-                                        if (description.Contains("<a href"))
-                                        {
-                                            while (description.Contains("<a href"))
+                                            try
                                             {
-                                                string innerWordRaw = description.Substring(description.IndexOf("<a href"), description.IndexOf("</a>") - description.IndexOf("<a href"));
-                                                string innerWord = innerWordRaw.Substring(innerWordRaw.IndexOf(">"));
-                                                innerWord = innerWord.Length > 0 ? innerWord.Substring(1) : "";
-                                                description = description.Replace(description.Substring(description.IndexOf("<a href"), description.IndexOf("</a>") - description.IndexOf("<a href") + 4), innerWord);
+                                                if (description.Contains("<p>"))
+                                                {
+                                                    description = description.Substring(description.IndexOf("<p>") + 3, description.IndexOf("</p>") - description.IndexOf("<p>") - 3);
+                                                }
+                                                else if (description.Contains("<p "))
+                                                {
+                                                    description = description.Substring(description.IndexOf("<p ") + 3, description.IndexOf("</p>") - description.IndexOf("<p ") - 3);
+                                                    description = description.Substring(description.IndexOf(">"));
+                                                    description = description.Length > 0 ? description.Substring(1) : "";
+                                                }
                                             }
-                                        }
+                                            catch (Exception ex) { Console.WriteLine(ex.ToString()); }
 
-                                        if (description.Contains("<span"))
-                                        {
-                                            while (description.Contains("<span"))
+                                            try
                                             {
-                                                string innerWordRaw = description.Substring(description.IndexOf("<span"), description.IndexOf("</span>") - description.IndexOf("<span"));
-                                                string innerWord = innerWordRaw.Substring(innerWordRaw.IndexOf(">"));
-                                                innerWord = innerWord.Length > 0 ? innerWord.Substring(1) : "";
-                                                description = description.Replace(description.Substring(description.IndexOf("<span"), description.IndexOf("</span>") - description.IndexOf("<span") + 7), innerWord);
+                                                if (description.Contains("<a href"))
+                                                {
+                                                    while (description.Contains("<a href"))
+                                                    {
+                                                        string innerWordRaw = description.Substring(description.IndexOf("<a href"), description.IndexOf("</a>") - description.IndexOf("<a href"));
+                                                        string innerWord = innerWordRaw.Substring(innerWordRaw.IndexOf(">"));
+                                                        innerWord = innerWord.Length > 0 ? innerWord.Substring(1) : "";
+                                                        description = description.Replace(description.Substring(description.IndexOf("<a href"), description.IndexOf("</a>") - description.IndexOf("<a href") + 4), innerWord);
+                                                    }
+                                                }
                                             }
+                                            catch (Exception ex) { Console.WriteLine(ex.ToString()); }
+
+                                            try
+                                            {
+                                                if (description.Contains("<span"))
+                                                {
+                                                    while (description.Contains("<span"))
+                                                    {
+                                                        string innerWordRaw = description.Substring(description.IndexOf("<span"), description.IndexOf("</span>") - description.IndexOf("<span"));
+                                                        string innerWord = innerWordRaw.Substring(innerWordRaw.IndexOf(">"));
+                                                        innerWord = innerWord.Length > 0 ? innerWord.Substring(1) : "";
+                                                        description = description.Replace(description.Substring(description.IndexOf("<span"), description.IndexOf("</span>") - description.IndexOf("<span") + 7), innerWord);
+                                                    }
+                                                }
+                                            }
+                                            catch (Exception ex) { Console.WriteLine(ex.ToString()); }
+
+                                            description = WebUtility.HtmlDecode(description);
                                         }
 
-                                        description = WebUtility.HtmlDecode(description);
-                                    }
-                                    string link = "";
-                                    if (item.Element("link") != null)
-                                    {
-                                        link = item.Element("link").Value.ToString();
-                                    }
+                                        string link = "";
+                                        if (item.Element("link") != null && item.Element("link").Value != null && item.Element("link").Value.Length > 0)
+                                        {
+                                            link = item.Element("link").Value.ToString();
+                                            link = WebUtility.UrlDecode(link);
+                                        }
 
-                                    bot.SendTextMessageAsync(channels.Single(), title + Environment.NewLine + description + Environment.NewLine + link).Wait();
+                                        bot.SendTextMessageAsync(channels.Single(), title + Environment.NewLine + description + Environment.NewLine + link).Wait();
+                                    }
+                                    catch (Exception ex) { Console.WriteLine(ex.ToString()); }
 
                                     Thread.Sleep(2000);
                                 }
