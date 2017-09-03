@@ -45,8 +45,8 @@ namespace ChannelAdminTelegramBot
         private static TelegramBotClient bot;
         private static User botUser;
 
-        private static System.Timers.Timer[] feedTimers;
-        private static string[] lastFeedUpdates;
+        private static System.Timers.Timer feedTimer;
+        private static string lastFeedUpdate;
 
         private static int updateCounter = 0;
 
@@ -167,42 +167,28 @@ namespace ChannelAdminTelegramBot
         {
             if (System.IO.File.Exists(@"LastFeedUpdates.txt"))
             {
-                lastFeedUpdates = System.IO.File.ReadAllLines(@"LastFeedUpdates.txt");
+                lastFeedUpdate = System.IO.File.ReadAllText(@"LastFeedUpdates.txt");
             }
 
-            if (lastFeedUpdates == null || lastFeedUpdates.Length < 2)
+            if (lastFeedUpdate == null)
             {
-                lastFeedUpdates = new string[] { "", "" };
+                lastFeedUpdate = "";
             }
-
-            feedTimers = new System.Timers.Timer[2];
-
-            // digiato
-
-            feedTimers[0] = new System.Timers.Timer(30000);
-            feedTimers[0].AutoReset = true;
-            feedTimers[0].Elapsed += (sender, e) =>
-            {
-                checkRssFeed(@"http://feeds.feedburner.com/Digiato?format=xml", 0);
-            };
-            feedTimers[0].Start();
-
-            checkRssFeed(@"http://feeds.feedburner.com/Digiato?format=xml", 0);
 
             // zoomit
 
-            feedTimers[1] = new System.Timers.Timer(30000);
-            feedTimers[1].AutoReset = true;
-            feedTimers[1].Elapsed += (sender, e) =>
+            feedTimer = new System.Timers.Timer(30000);
+            feedTimer.AutoReset = true;
+            feedTimer.Elapsed += (sender, e) =>
             {
-                checkRssFeed(@"https://www.zoomit.ir/feed/", 1);
+                checkRssFeed(@"https://www.zoomit.ir/feed/");
             };
-            feedTimers[1].Start();
+            feedTimer.Start();
 
-            checkRssFeed(@"https://www.zoomit.ir/feed/", 1);
+            checkRssFeed(@"https://www.zoomit.ir/feed/");
         }
 
-        private static void checkRssFeed(string url, int feedIndex)
+        private static void checkRssFeed(string url)
         {
             try
             {
@@ -222,8 +208,24 @@ namespace ChannelAdminTelegramBot
 
                                 foreach (XElement item in itemsList)
                                 {
+                                    /*string pubDate = item.Element("pubDate").Value;
 
-                                    if (item.Element("pubDate").Value == lastFeedUpdates[feedIndex])
+                                    string dayOfWeekStr = pubDate.Substring(0, 3);
+
+                                    DateTime dt = new DateTime();
+
+                                    if (Enum.IsDefined(typeof(DayOfWeek), dayOfWeekStr))
+                                    {
+                                        dt.DayOfWeek = (DayOfWeek) Enum.Parse(typeof(DayOfWeek), dayOfWeekStr, true);
+                                    }
+                                    else
+                                    {
+                                        // do some logic here
+                                    }
+
+                                    */
+
+                                    if (item.Element("pubDate").Value == lastFeedUpdate)
                                     {
                                         break;
                                     }
@@ -237,8 +239,8 @@ namespace ChannelAdminTelegramBot
 
                                 if (itemsList != null && itemsList.Count() > 0)
                                 {
-                                    lastFeedUpdates[feedIndex] = itemsList.First().Element("pubDate").Value.ToString();
-                                    System.IO.File.WriteAllLines(@"TabnakLastUpdate.txt", lastFeedUpdates);
+                                    lastFeedUpdate = itemsList.First().Element("pubDate").Value.ToString();
+                                    System.IO.File.WriteAllText(@"TabnakLastUpdate.txt", lastFeedUpdate);
                                 }
 
                                 foreach (XElement item in neededOnes)
