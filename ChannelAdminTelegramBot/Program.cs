@@ -52,7 +52,7 @@ namespace ChannelAdminTelegramBot
 
         static void Main(string[] args)
         {
-            bot = new TelegramBotClient("410575939:AAFNP8-4xzQRfMuhH2fOWRm7JI5gRaISO3E");
+            bot = new TelegramBotClient("-");
             botUser = bot.GetMeAsync().Result;
 
             Console.WriteLine("Configuring data sources...");
